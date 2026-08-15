@@ -1,4 +1,4 @@
-# FlyRank Backend Track - W5-A9: The Polite Scraper
+# FlyRank internship - W5-A9: The Polite Scraper
 
 A polite, deterministic web scraping pipeline in Python that extracts book data from the Books to Scrape sandbox, normalizes messy HTML, validates records against a strict schema, and continues running smoothly even when encountering broken pages.
 
