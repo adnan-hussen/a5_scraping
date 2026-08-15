@@ -37,7 +37,7 @@ def get_cache_path(url:str) -> str:
     url_hash = hashlib.md5(url.encode("utf-8")).hexdigest()
     return os.path.join(CACHE_DIR, url_hash)
 
-def fetch_page(url:str) -> tuple[str | None, bool]:
+def fetch_page(url:str, is_retry:bool = False) -> tuple[str | None, bool]:
 
     os.makedirs(CACHE_DIR, exist_ok=True)
     cache_path = get_cache_path(url)
@@ -49,8 +49,14 @@ def fetch_page(url:str) -> tuple[str | None, bool]:
         return html, True
 
     time.sleep(DELAY)
+
     try:
         response = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+
+        if response.status_code >= 500 and not is_retry:
+            time.sleep(1.0)
+            return fetch_page(url, is_retry = True)
+        
         if response.status_code == 200:
             html = response.text
             with open(cache_path, "w", encoding="utf-8") as f:
@@ -60,6 +66,14 @@ def fetch_page(url:str) -> tuple[str | None, bool]:
         else:
             print(f"failed fetch, status code {response.status_code}")
             return None, False
+        
+    except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+        if not is_retry:
+            time.sleep(1.0)
+            return fetch_page(url, is_retry=True)
+        print(f"Network error on {url}: {e}")
+        return None, False
+    
     except requests.exceptions.RequestException as e:
         print(f"Error: {e}")
         return None, False
