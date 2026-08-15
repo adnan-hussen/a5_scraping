@@ -2,8 +2,11 @@ import os
 import requests
 import hashlib
 import time
+import json
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
+
+from datetime import timezone, datetime
 
 URL = "https://books.toscrape.com/catalogue/page-1.html"
 CACHE_DIR = "cache"
@@ -54,7 +57,7 @@ def discover_books() -> list[str]:
     visited_pages = 0
 
     while current_url and visited_pages < MAX_PAGES:
-        html, isCached = fetch_page(current_url)
+        html, _ = fetch_page(current_url)
 
         if not html:
             break
@@ -82,5 +85,66 @@ def discover_books() -> list[str]:
     print(f"catalogue_pages={visited_pages}, discovered={len(discovered_urls)}, unique_urls={len(unique_urls)}")
     return unique_urls
 
+def get_book_details(url: str) -> dict:
+    html, _ = fetch_page(url)
+
+    if not html:
+        return None
+
+    #parse the page
+    soup = BeautifulSoup(html, "html.parser")
+
+    main_prod = soup.select_one("div.product_main")
+    if not main_prod:
+        return None
+
+    #select and extract the book details
+    title = main_prod.select_one("h1").get_text(strip=True)
+    price_text = main_prod.select_one("p.price_color").get_text(strip=True)
+    availability_text = main_prod.select_one("p.instock.availability").get_text(strip=True)
+
+    rating_el = main_prod.select_one("p.star-rating")
+    rating_text = "Unknown"
+    if rating_el:
+        classes = rating_el.get("class", [])
+        for cls in classes:
+            if cls != "star-rating":
+                rating_text = cls
+                break
+    
+    desc_header = soup.find("div", id="product_description")
+    description = None
+    if desc_header:
+        desc_p = desc_header.find_next_sibling("p")
+        if desc_p:
+            description = desc_p.get_text(strip=True)
+
+    return {
+        "title": title,
+        "product_url": url,
+        "price_text": price_text,
+        "availability_text": availability_text,
+        "rating_text": rating_text,
+        "description": description,
+        "source_page": url,
+        "fetched_at": datetime.now(timezone.utc).isoformat()
+    }
+
+
+
+def run_stage_3():
+    book_urls = discover_books()
+    raw_records = []
+
+    for i in range(5):
+        record = get_book_details(book_urls[i])
+        if record:
+            raw_records.append(record)
+
+    print(f"detail_pages={len(raw_records)}")
+    if raw_records:
+        print("\nSample Record:")
+        print(json.dumps(raw_records[0], indent=2))
+
 if __name__ == "__main__":
-    print(discover_books())
+    run_stage_3()
