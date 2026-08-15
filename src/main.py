@@ -5,6 +5,7 @@ import time
 import json
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
+from pydantic import BaseModel, HttpUrl, ValidationError
 
 from datetime import timezone, datetime
 
@@ -14,10 +15,22 @@ CACHE_FILE = os.path.join(CACHE_DIR, "catalogue-page-1.html")
 TIMEOUT = 10.0
 MAX_PAGES = 3
 DELAY = 0.5
+OUTPUT_DIR = "output"
 
 HEADERS = {
     "User-Agent": "FlyRankInternship-A9/1.0"
 }
+
+class BookRecord(BaseModel):
+    title: str
+    product_url: HttpUrl
+    price_text: str
+    price_gbp: float
+    availability_text: str
+    rating_text: str
+    description: str | None = None
+    source_page: HttpUrl
+    fetched_at: str
 
 def get_cache_path(url:str) -> str:
     url_hash = hashlib.md5(url.encode("utf-8")).hexdigest()
@@ -132,19 +145,35 @@ def get_book_details(url: str) -> dict:
 
 
 
-def run_stage_3():
-    book_urls = discover_books()
-    raw_records = []
+def process_and_store():
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    for i in range(5):
-        record = get_book_details(book_urls[i])
-        if record:
-            raw_records.append(record)
+    fetched_books = discover_books()
 
-    print(f"detail_pages={len(raw_records)}")
-    if raw_records:
-        print("\nSample Record:")
-        print(json.dumps(raw_records[0], indent=2))
+    valid_records = []
+    errors = []
+
+    for book_url in fetched_books:
+        book_details = get_book_details(book_url)
+
+        if not book_details:
+            errors.append({"product_url":book_url, "reason": "Extraction failed" })
+            continue
+
+        #validation
+        try:
+            book = BookRecord(**book_details)
+            valid_records.append(book)
+        except ValidationError as e:
+            errors.append({"product_url":book_url, "reason": e.errors() })
+
+    with open(os.path.join(OUTPUT_DIR, "books.json",), 'w', encoding="utf-8") as f:
+        json.dump(valid_records,f, indent=1)
+    with open(os.path.join(OUTPUT_DIR, "errors.json"), 'w', encoding="utf-8") as f:
+        json.dump(errors, f, indent=1)
+
+    print(f"Stored {len(valid_records)} valid records in output/books.json")
+    print(f"Stored {len(errors)} failed records in output/errors.json")
 
 if __name__ == "__main__":
-    run_stage_3()
+    process_and_store()
