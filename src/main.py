@@ -6,6 +6,7 @@ import json
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 from pydantic import BaseModel, HttpUrl, ValidationError
+import re
 
 from datetime import timezone, datetime
 
@@ -131,11 +132,14 @@ def get_book_details(url: str) -> dict:
         desc_p = desc_header.find_next_sibling("p")
         if desc_p:
             description = desc_p.get_text(strip=True)
+    price_match = re.search(r"[\d.]+", price_text)
+    price_gbp = float(price_match.group(0)) if price_match else 0.0
 
     return {
         "title": title,
         "product_url": url,
         "price_text": price_text,
+        "price_gbp": price_gbp,
         "availability_text": availability_text,
         "rating_text": rating_text,
         "description": description,
@@ -162,8 +166,8 @@ def process_and_store():
 
         #validation
         try:
-            book = BookRecord(**book_details)
-            valid_records.append(book)
+            book_record = BookRecord(**book_details)
+            valid_records.append(book_record.model_dump(mode="json"))
         except ValidationError as e:
             errors.append({"product_url":book_url, "reason": e.errors() })
 
